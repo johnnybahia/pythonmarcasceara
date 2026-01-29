@@ -42,6 +42,21 @@ def identificar_unidade(texto):
     
     return "UNID"
 
+# ================= EXTRAÇÃO DA ORDEM DE COMPRA =================
+
+def extrair_ordem_compra(texto):
+    """
+    Extrai o número da Ordem de Compra do PDF.
+    Padrões reconhecidos:
+      - ANIGER: "Ordem de compra 20113511"
+      - DILLY:  "Ordem Compra 435918"
+      - DASS:   "Ordem de compra 15159823"
+    """
+    match = re.search(r'Ordem\s+(?:de\s+)?[Cc]ompra\s+(\d+)', texto)
+    if match:
+        return match.group(1)
+    return "N/D"
+
 # ================= FUNÇÕES ESPECÍFICAS DE LOCALIZAÇÃO =================
 
 def extrair_local_dass(texto):
@@ -118,6 +133,7 @@ def processar_dilly(texto_completo, nome_arquivo):
     if match_valor: valor = limpar_valor_monetario(match_valor.group(1))
 
     return {
+        "ordemCompra": extrair_ordem_compra(texto_completo),
         "dataPedido": data_ped,
         "dataRecebimento": data_rec,
         "arquivo": nome_arquivo,
@@ -160,6 +176,7 @@ def processar_aniger(texto_completo, nome_arquivo):
         valor = limpar_valor_monetario(match_totais.group(2))
 
     return {
+        "ordemCompra": extrair_ordem_compra(texto_completo),
         "dataPedido": data_ped_str,
         "dataRecebimento": data_rec_str,
         "arquivo": nome_arquivo,
@@ -167,7 +184,7 @@ def processar_aniger(texto_completo, nome_arquivo):
         "marca": marca,
         "local": extrair_local_aniger(texto_completo),
         "qtd": qtd,
-        "unidade": identificar_unidade(texto_completo), # ✅ Nova Lógica de Unidade
+        "unidade": identificar_unidade(texto_completo),
         "valor_raw": valor
     }
 
@@ -195,6 +212,7 @@ def processar_dass(texto_completo, nome_arquivo):
     if match_qtd: qtd = int(limpar_valor_monetario(match_qtd.group(1)))
 
     return {
+        "ordemCompra": extrair_ordem_compra(texto_completo),
         "dataPedido": data_ped,
         "dataRecebimento": data_rec,
         "arquivo": nome_arquivo,
@@ -205,6 +223,99 @@ def processar_dass(texto_completo, nome_arquivo):
         "unidade": identificar_unidade(texto_completo),
         "valor_raw": valor
     }
+
+# ================= LOCALIZAR ORDEM DE COMPRA =================
+
+def localizar_ordem(numero_ordem):
+    """
+    Busca uma ordem de compra pelo número em todas as pastas (entrada e lidos).
+    Retorna os dados completos do pedido se encontrar.
+    """
+    pastas = [PASTA_ENTRADA, PASTA_LIDOS]
+
+    for pasta in pastas:
+        if not os.path.exists(pasta):
+            continue
+
+        arquivos = [f for f in os.listdir(pasta) if f.lower().endswith('.pdf')]
+        for arq in arquivos:
+            caminho = os.path.join(pasta, arq)
+            try:
+                with pdfplumber.open(caminho) as pdf:
+                    texto_completo = ""
+                    for page in pdf.pages:
+                        texto_completo += page.extract_text() or ""
+
+                    ordem_encontrada = extrair_ordem_compra(texto_completo)
+                    if ordem_encontrada == numero_ordem:
+                        # Identificar o cliente e processar
+                        if "DILLY" in texto_completo.upper():
+                            dados = processar_dilly(texto_completo, arq)
+                        elif "ANIGER" in texto_completo.upper():
+                            dados = processar_aniger(texto_completo, arq)
+                        elif "DASS" in texto_completo.upper() or "01287588" in texto_completo:
+                            dados = processar_dass(texto_completo, arq)
+                        else:
+                            continue
+
+                        dados["valor"] = f"R$ {dados['valor_raw']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                        del dados["valor_raw"]
+                        dados["pasta"] = "Pendente" if pasta == PASTA_ENTRADA else "Processado"
+                        return dados
+            except Exception as e:
+                continue
+
+    return None
+
+def exibir_ordem(dados):
+    """Exibe os detalhes de uma ordem de compra encontrada."""
+    print("\n" + "=" * 60)
+    print(f"  ORDEM DE COMPRA: {dados['ordemCompra']}")
+    print("=" * 60)
+    print(f"  Cliente ......: {dados['cliente']}")
+    print(f"  Marca ........: {dados['marca']}")
+    print(f"  Local ........: {dados['local']}")
+    print(f"  Data Pedido ..: {dados['dataPedido']}")
+    print(f"  Data Receb. ..: {dados['dataRecebimento']}")
+    print(f"  Quantidade ...: {dados['qtd']} {dados['unidade']}")
+    print(f"  Valor ........: {dados['valor']}")
+    print(f"  Arquivo ......: {dados['arquivo']}")
+    print(f"  Status .......: {dados['pasta']}")
+    print("=" * 60)
+
+def menu_localizar_ordem():
+    """Menu interativo para buscar ordens de compra."""
+    while True:
+        print("\n--- LOCALIZAR ORDEM DE COMPRA ---")
+        numero = input("Digite o numero da ordem (ou 'voltar'): ").strip()
+
+        if numero.lower() == 'voltar':
+            break
+
+        if not numero.isdigit():
+            print("Numero invalido. Digite apenas numeros.")
+            continue
+
+        print(f"\nBuscando ordem {numero}...")
+        resultado = localizar_ordem(numero)
+
+        if resultado:
+            exibir_ordem(resultado)
+
+            enviar = input("\nEnviar esta ordem para o Google Planilhas? (s/n): ").strip().lower()
+            if enviar == 's':
+                try:
+                    envio = dict(resultado)
+                    envio.pop("pasta", None)
+                    r = requests.post(URL_WEBAPP, json={"pedidos": [envio]})
+                    if r.status_code == 200:
+                        print("SUCESSO! Ordem enviada para o Google Planilhas.")
+                    else:
+                        print(f"Erro HTTP {r.status_code}")
+                except Exception as e:
+                    print(f"Erro de conexao: {e}")
+        else:
+            print(f"Ordem {numero} nao encontrada nos PDFs.")
 
 # ================= CONTROLADOR PRINCIPAL =================
 
@@ -240,45 +351,71 @@ def mover_arquivos(lista_arquivos):
             shutil.move(os.path.join(PASTA_ENTRADA, arquivo), os.path.join(PASTA_LIDOS, arquivo))
         except: pass
 
-def main():
+def processar_pedidos():
+    """Processa todos os PDFs da pasta de entrada e envia ao Google Planilhas."""
     if not os.path.exists(PASTA_ENTRADA):
         os.makedirs(PASTA_ENTRADA)
         print("Pasta criada.")
         return
 
     arquivos = [f for f in os.listdir(PASTA_ENTRADA) if f.lower().endswith('.pdf')]
-    print(f"📂 Processando {len(arquivos)} arquivos...")
-    
+    print(f"\nProcessando {len(arquivos)} arquivos...")
+
     todos_pedidos = []
     arquivos_ok = []
 
-    print("-" * 80)
-    print(f"{'CLIENTE':<12} | {'ENTREGA':<12} | {'LOCAL':<15} | {'VALOR':<15}")
-    print("-" * 80)
+    print("-" * 95)
+    print(f"{'ORDEM':<12} | {'CLIENTE':<12} | {'ENTREGA':<12} | {'LOCAL':<15} | {'VALOR':<15}")
+    print("-" * 95)
 
     for arq in arquivos:
         pedidos = processar_pdf_inteligente(os.path.join(PASTA_ENTRADA, arq), arq)
         if pedidos:
             for p in pedidos:
                 todos_pedidos.append(p)
-                print(f"✅ {p['cliente'][:12]:<12} | {p['dataPedido']:<12} | {p['local'][:15]:<15} | {p['valor']:<15}")
+                print(f"  {p['ordemCompra']:<12} | {p['cliente'][:12]:<12} | {p['dataPedido']:<12} | {p['local'][:15]:<15} | {p['valor']:<15}")
             arquivos_ok.append(arq)
         else:
-            print(f"⚠️  Desconhecido: {arq}")
+            print(f"  Desconhecido: {arq}")
 
     if todos_pedidos:
-        print("\n📤 Enviando...")
+        print(f"\nEnviando {len(todos_pedidos)} pedido(s) para o Google Planilhas...")
         try:
             r = requests.post(URL_WEBAPP, json={"pedidos": todos_pedidos})
             if r.status_code == 200:
-                print("☁️ SUCESSO! Dados enviados.")
+                print("SUCESSO! Dados enviados para o Google Planilhas.")
                 mover_arquivos(arquivos_ok)
             else:
-                print(f"❌ Erro HTTP {r.status_code}")
+                print(f"Erro HTTP {r.status_code}")
         except Exception as e:
-            print(f"❌ Erro Conexão: {e}")
-    
-    input("\nENTER para sair...")
+            print(f"Erro de conexao: {e}")
+    else:
+        print("\nNenhum pedido encontrado para enviar.")
+
+def main():
+    if not os.path.exists(PASTA_ENTRADA):
+        os.makedirs(PASTA_ENTRADA)
+
+    while True:
+        print("\n" + "=" * 45)
+        print("   MARFIM - GESTAO DE ORDENS DE COMPRA")
+        print("=" * 45)
+        print("  [1] Processar PDFs e enviar ao Google Planilhas")
+        print("  [2] Localizar ordem de compra")
+        print("  [0] Sair")
+        print("-" * 45)
+
+        opcao = input("  Escolha uma opcao: ").strip()
+
+        if opcao == '1':
+            processar_pedidos()
+        elif opcao == '2':
+            menu_localizar_ordem()
+        elif opcao == '0':
+            print("Encerrando...")
+            break
+        else:
+            print("Opcao invalida.")
 
 if __name__ == "__main__":
     main()

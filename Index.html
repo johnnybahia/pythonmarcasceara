@@ -1167,11 +1167,12 @@
                 <th>Total em Pares</th>
                 <th>Pares/Dia Útil</th>
                 <th>Total em Metros</th>
+                <th>Total Elástico</th>
               </tr>
             </thead>
             <tbody id="tabelaMarcas">
               <tr>
-                <td colspan="5" class="marcas-empty">Carregando dados...</td>
+                <td colspan="6" class="marcas-empty">Carregando dados...</td>
               </tr>
             </tbody>
           </table>
@@ -1266,6 +1267,11 @@
           <div class="kpi-title-small">Total em Metros</div>
           <div class="kpi-value-small" id="kpiMetros">0</div>
           <div class="kpi-sub-small">Unidades tipo METRO</div>
+        </div>
+        <div class="kpi-card-small" style="border-left-color: #e74c3c;">
+          <div class="kpi-title-small">Total Elástico</div>
+          <div class="kpi-value-small" id="kpiElastico">0</div>
+          <div class="kpi-sub-small">Unidades com elástico (DAKOTA)</div>
         </div>
       </div>
 
@@ -1643,6 +1649,7 @@
       var totalValor = 0;
       var totalPares = 0;
       var totalMetros = 0;
+      var totalElastico = 0;
       linhasFiltradas = []; // Atualiza variável global para exportação
 
       if (dadosBrutos && dadosBrutos.length > 0) {
@@ -1679,10 +1686,15 @@
           var valorLimpo = limparNumero(row[8]);
           totalValor += valorLimpo;
 
-          // Soma Qtd (Separa Pares vs Metros) - índices 6 e 7
+          // Verifica se é elástico (coluna K, índice 10)
+          var ehElastico = (row[10] || "").toString().toUpperCase() === "SIM";
+
+          // Soma Qtd (Separa Pares vs Metros vs Elástico) - índices 6, 7 e 10
           var und = (row[7] || "").toString().toUpperCase();
 
-          if (und.includes("PAR")) {
+          if (ehElastico) {
+            totalElastico += qtd;
+          } else if (und.includes("PAR")) {
             totalPares += qtd;
           } else if (und.includes("M") || und.includes("METRO")) {
             totalMetros += qtd;
@@ -1690,12 +1702,12 @@
         });
 
         addDebugLog("✅ Filtro aplicado: " + linhasFiltradas.length + " registros encontrados (Total: " + dadosBrutos.length + ", Ignoradas: " + linhasIgnoradas + ")", "success");
-        addDebugLog("💰 Total calculado: R$ " + totalValor.toFixed(2) + " | Pares: " + totalPares + " | Metros: " + totalMetros);
+        addDebugLog("💰 Total calculado: R$ " + totalValor.toFixed(2) + " | Pares: " + totalPares + " | Metros: " + totalMetros + " | Elástico: " + totalElastico);
       } else {
         addDebugLog("⚠️ Nenhum dado bruto disponível para filtrar", "error");
       }
 
-      atualizarKPIs(totalValor, totalPares, totalMetros);
+      atualizarKPIs(totalValor, totalPares, totalMetros, totalElastico);
       atualizarTabela(linhasFiltradas);
     }
 
@@ -1738,10 +1750,11 @@
     }
 
     // Atualiza os cartões coloridos
-    function atualizarKPIs(v, p, m) {
+    function atualizarKPIs(v, p, m, e) {
       document.getElementById("kpiValor").innerText = v.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
       document.getElementById("kpiPares").innerText = p.toLocaleString('pt-BR');
       document.getElementById("kpiMetros").innerText = m.toLocaleString('pt-BR');
+      document.getElementById("kpiElastico").innerText = (e || 0).toLocaleString('pt-BR');
     }
 
     // Desenha a tabela
@@ -1972,19 +1985,25 @@
           // Ignora linhas com quantidade 0
           if (qtd === 0) return;
 
+          // Verifica se é elástico (coluna K, índice 10)
+          var ehElastico = (row[10] || "").toString().toUpperCase() === "SIM";
+
           // Inicializa totais da marca se não existir
           if (!totaisPorMarca[marca]) {
             totaisPorMarca[marca] = {
               reais: 0,
               pares: 0,
-              metros: 0
+              metros: 0,
+              elastico: 0
             };
           }
 
           // Acumula valores
           totaisPorMarca[marca].reais += valor;
 
-          if (unidade.includes("PAR")) {
+          if (ehElastico) {
+            totaisPorMarca[marca].elastico += qtd;
+          } else if (unidade.includes("PAR")) {
             totaisPorMarca[marca].pares += qtd;
           } else if (unidade.includes("M") || unidade.includes("METRO")) {
             totaisPorMarca[marca].metros += qtd;
@@ -2008,7 +2027,7 @@
 
       // Verifica se há dados
       if (!totaisPorMarca || Object.keys(totaisPorMarca).length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="marcas-empty">Nenhuma marca encontrada para este mês.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="marcas-empty">Nenhuma marca encontrada para este mês.</td></tr>';
         return;
       }
 
@@ -2040,6 +2059,7 @@
       var totalGeralReais = 0;
       var totalGeralPares = 0;
       var totalGeralMetros = 0;
+      var totalGeralElastico = 0;
 
       // Renderiza cada marca
       marcasArray.forEach(function(item) {
@@ -2048,10 +2068,15 @@
         totalGeralReais += item.dados.reais;
         totalGeralPares += item.dados.pares;
         totalGeralMetros += item.dados.metros;
+        totalGeralElastico += item.dados.elastico;
 
         // Calcula média de pares por dia útil
         var paresPorDia = diasUteis > 0 ? (item.dados.pares / diasUteis) : 0;
         var paresPorDiaFormatado = paresPorDia.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+
+        var elasticoDisplay = item.dados.elastico > 0
+          ? '<span style="color:#e74c3c; font-weight:bold;">' + item.dados.elastico.toLocaleString('pt-BR') + '</span>'
+          : '0';
 
         tr.innerHTML = `
           <td class="marca-nome">${item.nome}</td>
@@ -2059,6 +2084,7 @@
           <td class="qtd-destaque">${item.dados.pares.toLocaleString('pt-BR')}</td>
           <td class="qtd-destaque" style="color: #8e44ad;">${paresPorDiaFormatado}</td>
           <td class="qtd-destaque">${item.dados.metros.toLocaleString('pt-BR')}</td>
+          <td class="qtd-destaque">${elasticoDisplay}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -2066,6 +2092,10 @@
       // Calcula média geral de pares por dia útil
       var mediaParesPorDia = diasUteis > 0 ? (totalGeralPares / diasUteis) : 0;
       var mediaParesPorDiaFormatado = mediaParesPorDia.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+
+      var totalElasticoDisplay = totalGeralElastico > 0
+        ? '<span style="color:#e74c3c; font-weight:bold;">' + totalGeralElastico.toLocaleString('pt-BR') + '</span>'
+        : '0';
 
       // Adiciona linha de TOTAL
       var trTotal = document.createElement("tr");
@@ -2078,6 +2108,7 @@
         <td class="qtd-destaque">${totalGeralPares.toLocaleString('pt-BR')}</td>
         <td class="qtd-destaque" style="color: #8e44ad;">${mediaParesPorDiaFormatado}</td>
         <td class="qtd-destaque">${totalGeralMetros.toLocaleString('pt-BR')}</td>
+        <td class="qtd-destaque">${totalElasticoDisplay}</td>
       `;
       tbody.appendChild(trTotal);
 

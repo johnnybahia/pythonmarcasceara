@@ -1282,6 +1282,7 @@
               <th>Qtd</th>
               <th>Unidade</th>
               <th>Valor (R$)</th>
+              <th>Elástico</th>
             </tr>
           </thead>
           <tbody id="tabelaCorpo">
@@ -1749,7 +1750,7 @@
       tbody.innerHTML = "";
       
       if (!dados || dados.length === 0) {
-        tbody.innerHTML = "<tr><td colspan='9' style='text-align:center; padding:30px; color:#999;'>Nenhum registro encontrado para estes filtros.</td></tr>";
+        tbody.innerHTML = "<tr><td colspan='10' style='text-align:center; padding:30px; color:#999;'>Nenhum registro encontrado para estes filtros.</td></tr>";
         return;
       }
 
@@ -1765,6 +1766,10 @@
         else if(textoUnd.includes("M")) classeBadge = "badge badge-metro";
         else classeBadge = "badge";
 
+        var elasticoHtml = (r[10] || "").toUpperCase() === "SIM"
+          ? '<span style="color:#e74c3c; font-weight:bold;">SIM</span>'
+          : '';
+
         tr.innerHTML = `
           <td>${r[0]}</td>
           <td>${r[1]}</td>
@@ -1775,6 +1780,7 @@
           <td>${r[6]}</td>
           <td><span class="${classeBadge}">${r[7]}</span></td>
           <td style="color:#2c3e50; font-weight:bold;">${r[8]}</td>
+          <td>${elasticoHtml}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -2784,6 +2790,10 @@
         else if(textoUnd.includes("M")) classeBadge = "badge badge-metro";
         else classeBadge = "badge";
 
+        var elasticoHtml = (r[10] || "").toUpperCase() === "SIM"
+          ? '<span style="color:#e74c3c; font-weight:bold;">SIM</span>'
+          : '';
+
         tr.innerHTML = `
           <td>${r[0]}</td>
           <td>${r[1]}</td>
@@ -2794,6 +2804,7 @@
           <td>${r[6]}</td>
           <td><span class="${classeBadge}">${r[7]}</span></td>
           <td style="color:#2c3e50; font-weight:bold;">${r[8]}</td>
+          <td>${elasticoHtml}</td>
         `;
         tbody.appendChild(tr);
       });

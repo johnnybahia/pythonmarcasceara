@@ -180,7 +180,7 @@ function doPost(e) {
     if (!sheet) {
       // Se não existir, cria e põe cabeçalho
       sheet = doc.insertSheet("Dados");
-      sheet.appendRow(["Data de Entrega", "Data Recebimento", "Arquivo", "Cliente", "Marca", "Local Entrega", "Qtd", "Unidade", "Valor (R$)", "Ordem de Compra"]);
+      sheet.appendRow(["Data de Entrega", "Data Recebimento", "Arquivo", "Cliente", "Marca", "Local Entrega", "Qtd", "Unidade", "Valor (R$)", "Ordem de Compra", "Elástico"]);
     }
 
     var json = JSON.parse(e.postData.contents);
@@ -209,13 +209,14 @@ function doPost(e) {
           p.qtd,
           p.unidade,
           p.valor,
-          p.ordemCompra || "N/D"                     // Ordem de Compra
+          p.ordemCompra || "N/D",                    // Ordem de Compra
+          p.elastico || ""                           // Elástico (SIM ou vazio)
         ]);
       }
     }
 
     if (novasLinhas.length > 0) {
-      sheet.getRange(ultimaLinha + 1, 1, novasLinhas.length, 10).setValues(novasLinhas);
+      sheet.getRange(ultimaLinha + 1, 1, novasLinhas.length, 11).setValues(novasLinhas);
       return ContentService.createTextOutput(JSON.stringify({"status":"Sucesso", "msg": novasLinhas.length + " novos."})).setMimeType(ContentService.MimeType.JSON);
     } else {
       return ContentService.createTextOutput(JSON.stringify({"status":"Neutro", "msg": "Sem novidades."})).setMimeType(ContentService.MimeType.JSON);
@@ -249,7 +250,7 @@ function getDadosPlanilha() {
     var numLinhas = Math.min(1000, lastRow - 1);
     var inicio = lastRow - numLinhas + 1;
 
-    var dados = sheet.getRange(inicio, 1, numLinhas, 10).getValues();
+    var dados = sheet.getRange(inicio, 1, numLinhas, 11).getValues();
     Logger.log("✅ Recuperados " + dados.length + " registros");
 
     // Formata os dados para garantir compatibilidade
@@ -264,7 +265,8 @@ function getDadosPlanilha() {
         formatarNumero(row[6]),          // Qtd
         row[7] ? row[7].toString() : "", // Unidade
         formatarValor(row[8]),           // Valor (R$)
-        row[9] ? row[9].toString() : ""  // Ordem de Compra
+        row[9] ? row[9].toString() : "", // Ordem de Compra
+        row[10] ? row[10].toString() : "" // Elástico
       ];
     });
 

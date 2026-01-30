@@ -253,31 +253,55 @@ function getDadosPlanilha() {
     var dados = sheet.getRange(inicio, 1, numLinhas, 11).getValues();
     Logger.log("✅ Recuperados " + dados.length + " registros");
 
-    // Carrega mapa de valores da aba Dados1 (OC → valor)
+    // Carrega itens individuais da aba Dados1 (OC → lista de itens com valor)
     // para preencher valores ausentes (ex: pedidos DAKOTA sem valor no PDF)
-    var mapaValoresDados1 = {};
+    // Cruzamento item a item por OC + Quantidade
+    var itensDados1PorOC = {};
     try {
-      mapaValoresDados1 = agruparDados1PorOC();
-      Logger.log("✅ Mapa Dados1 carregado com " + Object.keys(mapaValoresDados1).length + " OCs");
+      var listaDados1 = lerDados1();
+      listaDados1.forEach(function(item) {
+        var oc = item.ordemCompra;
+        if (!itensDados1PorOC[oc]) {
+          itensDados1PorOC[oc] = [];
+        }
+        itensDados1PorOC[oc].push({
+          valor: item.valor,
+          quantidade: item.quantidade,
+          usado: false // controle para não usar o mesmo item duas vezes
+        });
+      });
+      Logger.log("✅ Dados1 carregado: " + Object.keys(itensDados1PorOC).length + " OCs com itens individuais");
     } catch (e) {
       Logger.log("⚠️ Não foi possível carregar Dados1: " + e.toString());
     }
-
-    // Controle para atribuir o valor da Dados1 apenas na primeira linha de cada OC
-    // Evita duplicar/triplicar o valor quando a mesma OC tem múltiplos itens
-    var ocsJaPreenchidas = {};
 
     // Formata os dados para garantir compatibilidade
     var dadosFormatados = dados.map(function(row) {
       var valor = row[8];
       var oc = row[9] ? row[9].toString().trim() : "";
+      var qtd = typeof row[6] === 'number' ? row[6] : parseFloat(String(row[6]).replace('.', '').replace(',', '.')) || 0;
 
-      // Se o valor está vazio ou zero, tenta buscar na aba Dados1 pela OC
-      // Atribui o valor apenas na PRIMEIRA ocorrência da OC para não duplicar
-      if ((!valor || valor === 0 || valor === "0" || valor === "R$ 0,00") && oc && mapaValoresDados1[oc]) {
-        if (!ocsJaPreenchidas[oc]) {
-          valor = mapaValoresDados1[oc].valor;
-          ocsJaPreenchidas[oc] = true;
+      // Se o valor está vazio ou zero, tenta buscar na aba Dados1
+      // Cruza por OC + Quantidade para achar o valor exato de cada item
+      if ((!valor || valor === 0 || valor === "0" || valor === "R$ 0,00") && oc && itensDados1PorOC[oc]) {
+        var itens = itensDados1PorOC[oc];
+        // Primeiro tenta match exato por quantidade
+        for (var i = 0; i < itens.length; i++) {
+          if (!itens[i].usado && itens[i].quantidade === qtd) {
+            valor = itens[i].valor;
+            itens[i].usado = true;
+            break;
+          }
+        }
+        // Se não encontrou por quantidade, usa o próximo item não usado da mesma OC
+        if (!valor || valor === 0 || valor === "0" || valor === "R$ 0,00") {
+          for (var j = 0; j < itens.length; j++) {
+            if (!itens[j].usado) {
+              valor = itens[j].valor;
+              itens[j].usado = true;
+              break;
+            }
+          }
         }
       }
 

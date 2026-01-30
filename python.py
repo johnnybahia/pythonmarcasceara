@@ -13,6 +13,15 @@ PASTA_ENTRADA = './pedidos'
 PASTA_LIDOS = './pedidos/lidos'
 # =================================================
 
+def converter_data_curta(data_str):
+    """Converte DD/MM/YY para DD/MM/YYYY."""
+    if not data_str:
+        return datetime.now().strftime("%d/%m/%Y")
+    parts = data_str.strip().split('/')
+    if len(parts) == 3 and len(parts[2]) == 2:
+        return f"{parts[0]}/{parts[1]}/20{parts[2]}"
+    return data_str
+
 def limpar_valor_monetario(texto):
     if not texto: return 0.0
     texto = texto.lower().replace('r$', '').replace('total', '').strip()
@@ -220,6 +229,106 @@ def processar_dass(texto_completo, nome_arquivo):
         "ordemCompra": ordem_compra
     }
 
+def processar_dakota(pages, nome_arquivo):
+    """
+    Processa PDF da DAKOTA. Cada linha da tabela gera um pedido separado.
+    Usa extract_tables() do pdfplumber para ler a tabela estruturada.
+    Colunas: #, Prioridade, Filial, OC, Emissão, Entrega, Limite, Comprador, Material, Unid, Qtd, Saldo
+    """
+    pedidos = []
+    compradores_conhecidos = ('saimon', 'ccarlos')
+
+    for page in pages:
+        tables = page.extract_tables()
+        if not tables:
+            continue
+
+        for table in tables:
+            for row in table:
+                if not row or len(row) < 8:
+                    continue
+
+                # Linhas de dados começam com número sequencial
+                primeiro = str(row[0] or '').strip()
+                if not primeiro.isdigit():
+                    continue
+
+                # Varrer cada célula e identificar pelo padrão
+                filial = ""
+                oc = ""
+                datas = []
+                unidade = "UNID"
+                qtd = 0
+
+                for cell in row:
+                    val = str(cell or '').strip()
+                    if not val or val == primeiro:
+                        continue
+
+                    # OC: dígitos + letra no final (41110T, 79703D, 79632D)
+                    if not oc and re.match(r'^\d+[A-Za-z]$', val):
+                        oc = val
+                        continue
+
+                    # Datas DD/MM/YY
+                    if re.match(r'^\d{2}/\d{2}/\d{2}$', val):
+                        datas.append(val)
+                        continue
+
+                    # Unidade (PR = PAR, MT = METRO)
+                    if val.upper() in ('PR', 'MT'):
+                        unidade = 'PAR' if val.upper() == 'PR' else 'METRO'
+                        continue
+
+                    # Pular compradores conhecidos
+                    if val.lower() in compradores_conhecidos:
+                        continue
+
+                    # Pular descrição de material (começa com código numérico)
+                    if re.match(r'^\d{4,}', val):
+                        continue
+
+                    # Filial: nome de cidade (só letras, 4+ caracteres)
+                    if not filial and re.match(r'^[A-ZÀ-ÿa-zà-ÿ\s]+$', val) and len(val.strip()) >= 4:
+                        filial = val
+                        continue
+
+                if not oc:
+                    continue
+
+                # Quantidade: primeiro número decimal encontrado (Qtd. OC)
+                for cell in row:
+                    val = str(cell or '').strip()
+                    if val == primeiro or not val:
+                        continue
+                    if re.match(r'^[\d\.,]+$', val):
+                        try:
+                            num = int(float(val.replace('.', '').replace(',', '.')))
+                            if num > 0:
+                                qtd = num
+                                break
+                        except:
+                            continue
+
+                # Primeira data = emissão, segunda = entrega
+                emissao = converter_data_curta(datas[0]) if datas else datetime.now().strftime("%d/%m/%Y")
+                entrega = converter_data_curta(datas[1]) if len(datas) >= 2 else emissao
+
+                pedidos.append({
+                    "dataPedido": entrega,
+                    "dataRecebimento": emissao,
+                    "arquivo": nome_arquivo,
+                    "cliente": "DAKOTA",
+                    "marca": "Sem Marca",
+                    "local": filial.strip().title(),
+                    "qtd": qtd,
+                    "unidade": unidade,
+                    "valor": "R$ 0,00",
+                    "ordemCompra": oc
+                })
+
+    return pedidos if pedidos else None
+
 # ================= CONTROLADOR PRINCIPAL =================
 
 def processar_pdf_inteligente(caminho_arquivo, nome_arquivo):
@@ -229,12 +338,16 @@ def processar_pdf_inteligente(caminho_arquivo, nome_arquivo):
             for page in pdf.pages:
                 texto_completo += page.extract_text() or ""
 
-            if "DILLY" in texto_completo.upper():
+            texto_upper = texto_completo.upper()
+
+            if "DILLY" in texto_upper:
                 return [processar_dilly(texto_completo, nome_arquivo)]
-            elif "ANIGER" in texto_completo.upper():
+            elif "ANIGER" in texto_upper:
                 return [processar_aniger(texto_completo, nome_arquivo)]
-            elif "DASS" in texto_completo.upper() or "01287588" in texto_completo:
+            elif "DASS" in texto_upper or "01287588" in texto_completo:
                 return [processar_dass(texto_completo, nome_arquivo)]
+            elif "DAKOTA" in texto_upper:
+                return processar_dakota(pdf.pages, nome_arquivo)
             else:
                 return None
 

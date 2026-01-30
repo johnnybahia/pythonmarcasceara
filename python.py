@@ -36,12 +36,10 @@ def identificar_unidade(texto):
 def extrair_ordem_compra(texto):
     """
     Extrai o número da Ordem de Compra do PDF.
-    Padrões reconhecidos:
-      - ANIGER: "Ordem de compra 20113511"
-      - DILLY:  "Ordem Compra 435918"
-      - DASS:   "Ordem de compra 15159823"
+    Usa \d{6,} para pular pedaços do CNPJ (94, 316, 999, 0009, 83)
+    e capturar somente o número real da OC (6+ dígitos).
     """
-    match = re.search(r'Ordem\s+(?:de\s+)?[Cc]ompra\s+(\d+)', texto)
+    match = re.search(r'Ordem\s+(?:de\s+)?[Cc]ompra[\s\S]{0,50}?(\d{6,})', texto)
     if match:
         return match.group(1)
     return "N/D"
@@ -110,7 +108,7 @@ def processar_dilly(texto_completo, nome_arquivo):
     if match_valor: valor = limpar_valor_monetario(match_valor.group(1))
 
     # --- 3. ORDEM DE COMPRA ---
-    match_ordem = re.search(r'Ordem\s+(?:de\s+)?[Cc]ompra\s+(\d+)', texto_completo)
+    match_ordem = re.search(r'Ordem\s+(?:de\s+)?[Cc]ompra[\s\S]{0,50}?(\d{6,})', texto_completo)
     ordem_compra = match_ordem.group(1) if match_ordem else "N/D"
 
     valor_formatado = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -159,7 +157,7 @@ def processar_aniger(texto_completo, nome_arquivo):
         valor = limpar_valor_monetario(match_totais.group(2))
 
     # --- 3. ORDEM DE COMPRA ---
-    match_ordem = re.search(r'Ordem\s+(?:de\s+)?[Cc]ompra\s+(\d+)', texto_completo)
+    match_ordem = re.search(r'Ordem\s+(?:de\s+)?[Cc]ompra[\s\S]{0,50}?(\d{6,})', texto_completo)
     ordem_compra = match_ordem.group(1) if match_ordem else "N/D"
 
     valor_formatado = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -193,7 +191,7 @@ def processar_dass(texto_completo, nome_arquivo):
     data_ped = match_entrega.group(1) if match_entrega else data_rec
 
     # --- 3. ORDEM DE COMPRA ---
-    match_ordem = re.search(r'Ordem\s+(?:de\s+)?[Cc]ompra\s+(\d+)', texto_completo)
+    match_ordem = re.search(r'Ordem\s+(?:de\s+)?[Cc]ompra[\s\S]{0,50}?(\d{6,})', texto_completo)
     ordem_compra = match_ordem.group(1) if match_ordem else "N/D"
 
     # --- DADOS GERAIS ---

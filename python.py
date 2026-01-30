@@ -316,8 +316,9 @@ def processar_dakota(pages, nome_arquivo):
                 emissao = converter_data_curta(datas[0]) if datas else datetime.now().strftime("%d/%m/%Y")
                 entrega = converter_data_curta(datas[1]) if len(datas) >= 2 else emissao
 
-                # Verifica se o material contém ELASTICO
-                elastico = "SIM" if "ELASTICO" in material.upper() else ""
+                # Verifica se ELASTICO aparece em qualquer célula da linha
+                texto_linha = ' '.join([str(c or '') for c in row]).upper()
+                elastico = "SIM" if "ELASTICO" in texto_linha else ""
 
                 pedidos.append({
                     "dataPedido": entrega,

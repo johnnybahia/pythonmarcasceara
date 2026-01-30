@@ -319,7 +319,7 @@ def processar_dakota(pages, nome_arquivo):
                     "dataRecebimento": emissao,
                     "arquivo": nome_arquivo,
                     "cliente": "DAKOTA",
-                    "marca": "DAKOTA",
+                    "marca": "Sem Marca",
                     "local": filial.strip().title(),
                     "qtd": qtd,
                     "unidade": unidade,

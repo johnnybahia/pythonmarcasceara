@@ -259,6 +259,7 @@ def processar_dakota(pages, nome_arquivo):
                 datas = []
                 unidade = "UNID"
                 qtd = 0
+                material = ""
 
                 for cell in row:
                     val = str(cell or '').strip()
@@ -284,8 +285,9 @@ def processar_dakota(pages, nome_arquivo):
                     if val.lower() in compradores_conhecidos:
                         continue
 
-                    # Pular descrição de material (começa com código numérico)
+                    # Descrição de material (começa com código numérico)
                     if re.match(r'^\d{4,}', val):
+                        material = val
                         continue
 
                     # Filial: nome de cidade (só letras, 4+ caracteres)
@@ -314,6 +316,9 @@ def processar_dakota(pages, nome_arquivo):
                 emissao = converter_data_curta(datas[0]) if datas else datetime.now().strftime("%d/%m/%Y")
                 entrega = converter_data_curta(datas[1]) if len(datas) >= 2 else emissao
 
+                # Verifica se o material contém ELASTICO
+                elastico = "SIM" if "ELASTICO" in material.upper() else ""
+
                 pedidos.append({
                     "dataPedido": entrega,
                     "dataRecebimento": emissao,
@@ -324,7 +329,8 @@ def processar_dakota(pages, nome_arquivo):
                     "qtd": qtd,
                     "unidade": unidade,
                     "valor": "R$ 0,00",
-                    "ordemCompra": oc
+                    "ordemCompra": oc,
+                    "elastico": elastico
                 })
 
     return pedidos if pedidos else None

@@ -253,8 +253,26 @@ function getDadosPlanilha() {
     var dados = sheet.getRange(inicio, 1, numLinhas, 11).getValues();
     Logger.log("✅ Recuperados " + dados.length + " registros");
 
+    // Carrega mapa de valores da aba Dados1 (OC → valor)
+    // para preencher valores ausentes (ex: pedidos DAKOTA sem valor no PDF)
+    var mapaValoresDados1 = {};
+    try {
+      mapaValoresDados1 = agruparDados1PorOC();
+      Logger.log("✅ Mapa Dados1 carregado com " + Object.keys(mapaValoresDados1).length + " OCs");
+    } catch (e) {
+      Logger.log("⚠️ Não foi possível carregar Dados1: " + e.toString());
+    }
+
     // Formata os dados para garantir compatibilidade
     var dadosFormatados = dados.map(function(row) {
+      var valor = row[8];
+      var oc = row[9] ? row[9].toString().trim() : "";
+
+      // Se o valor está vazio ou zero, tenta buscar na aba Dados1 pela OC
+      if ((!valor || valor === 0 || valor === "0" || valor === "R$ 0,00") && oc && mapaValoresDados1[oc]) {
+        valor = mapaValoresDados1[oc].valor;
+      }
+
       return [
         formatarData(row[0]),            // Data de Entrega
         formatarData(row[1]),            // Data Recebimento
@@ -264,8 +282,8 @@ function getDadosPlanilha() {
         row[5] ? row[5].toString() : "", // Local Entrega
         formatarNumero(row[6]),          // Qtd
         row[7] ? row[7].toString() : "", // Unidade
-        formatarValor(row[8]),           // Valor (R$)
-        row[9] ? row[9].toString() : "", // Ordem de Compra
+        formatarValor(valor),            // Valor (R$) - com fallback para Dados1
+        oc,                              // Ordem de Compra
         row[10] ? row[10].toString() : "" // Elástico
       ];
     });

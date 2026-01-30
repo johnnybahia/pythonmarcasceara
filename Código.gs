@@ -263,14 +263,22 @@ function getDadosPlanilha() {
       Logger.log("⚠️ Não foi possível carregar Dados1: " + e.toString());
     }
 
+    // Controle para atribuir o valor da Dados1 apenas na primeira linha de cada OC
+    // Evita duplicar/triplicar o valor quando a mesma OC tem múltiplos itens
+    var ocsJaPreenchidas = {};
+
     // Formata os dados para garantir compatibilidade
     var dadosFormatados = dados.map(function(row) {
       var valor = row[8];
       var oc = row[9] ? row[9].toString().trim() : "";
 
       // Se o valor está vazio ou zero, tenta buscar na aba Dados1 pela OC
+      // Atribui o valor apenas na PRIMEIRA ocorrência da OC para não duplicar
       if ((!valor || valor === 0 || valor === "0" || valor === "R$ 0,00") && oc && mapaValoresDados1[oc]) {
-        valor = mapaValoresDados1[oc].valor;
+        if (!ocsJaPreenchidas[oc]) {
+          valor = mapaValoresDados1[oc].valor;
+          ocsJaPreenchidas[oc] = true;
+        }
       }
 
       return [

@@ -1977,7 +1977,8 @@
           // Filtra apenas o mês selecionado
           if (mesAnoEntrega !== mesSelecionado) return;
 
-          var marca = row[4] || "Sem Marca";
+          var cliente = (row[3] || "").toString().toUpperCase();
+          var marca = row[4] || (cliente.includes("DAKOTA") ? "DAKOTA (todos)" : "Sem Marca");
           var valor = limparNumero(row[8]);
           var qtd = limparNumero(row[6]);
           var unidade = (row[7] || "").toString().toUpperCase();

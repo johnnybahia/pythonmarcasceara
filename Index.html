@@ -1201,6 +1201,9 @@
           <div class="card-body-faturamento" id="listaEntradas">
             <div class="loading-faturamento">Carregando dados...</div>
           </div>
+          <button class="btn-historico" onclick="abrirHistoricoEntradas()">
+            📊 Ver Histórico Completo
+          </button>
         </div>
 
         <!-- CARD: FATURAMENTO DO DIA -->
@@ -1370,6 +1373,77 @@
       </div>
 
       <button class="btn-salvar-edicao" onclick="salvarEdicao()">💾 Salvar Alterações</button>
+    </div>
+  </div>
+
+  <!-- MODAL: HISTÓRICO DE ENTRADAS -->
+  <div id="modalHistoricoEntradas" class="modal-historico">
+    <div class="modal-content-historico">
+      <div class="modal-header-historico" style="background-color: #1565c0;">
+        <h2>📦 Histórico de Entradas</h2>
+        <span class="close-historico" onclick="fecharHistoricoEntradas()">&times;</span>
+      </div>
+      <div class="modal-body-historico">
+        <!-- Filtro de Mês -->
+        <div class="filtro-mes-container">
+          <label for="filtroMesEntradas">Filtrar por:</label>
+          <select id="filtroMesEntradas" onchange="aplicarFiltroMesEntradas()">
+            <option value="tudo">Tudo</option>
+            <option value="mes">Mês Atual</option>
+          </select>
+
+          <div id="selecionarMesEntradas" style="display:none;">
+            <label for="mesAnoEntradas">Selecione o mês:</label>
+            <input type="month" id="mesAnoEntradas" onchange="aplicarFiltroMesEntradas()">
+          </div>
+        </div>
+
+        <!-- Total Dinâmico -->
+        <div class="total-dinamico-container" style="background: linear-gradient(135deg, #1565c0 0%, #0d47a1 100%);">
+          <h3>Total do Período: <span id="totalDinamicoEntradas">R$ 0,00</span></h3>
+        </div>
+
+        <div id="conteudoHistoricoEntradas">
+          <div class="loading-faturamento">Carregando histórico de entradas...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: EDITAR REGISTRO DE ENTRADA -->
+  <div id="modalEditarEntrada" class="modal-editar">
+    <div class="modal-editar-content">
+      <div class="modal-editar-header" style="border-bottom-color: #1565c0;">
+        <h3 style="color: #1565c0;">✏️ Editar Registro de Entrada</h3>
+        <span class="close-editar" onclick="fecharModalEdicaoEntrada()">&times;</span>
+      </div>
+
+      <div class="form-group-editar">
+        <label>Data:</label>
+        <input type="text" id="editDataEntrada" readonly style="background-color: #f5f5f5;">
+      </div>
+
+      <div class="form-group-editar">
+        <label>Cliente:</label>
+        <input type="text" id="editClienteEntrada" readonly style="background-color: #f5f5f5;">
+      </div>
+
+      <div class="form-group-editar">
+        <label>Marca:</label>
+        <input type="text" id="editMarcaEntrada" readonly style="background-color: #f5f5f5;">
+      </div>
+
+      <div class="form-group-editar">
+        <label>Novo Valor (R$):</label>
+        <input type="number" id="editValorEntrada" step="0.01" placeholder="0.00" required>
+      </div>
+
+      <div class="form-group-editar">
+        <label>Observação (motivo da correção):</label>
+        <textarea id="editObservacaoEntrada" placeholder="Ex: Correção de cálculo errado, valor atualizado manualmente..."></textarea>
+      </div>
+
+      <button class="btn-salvar-edicao" onclick="salvarEdicaoEntrada()">💾 Salvar Alterações</button>
     </div>
   </div>
 
@@ -1593,12 +1667,14 @@
 
       // 5. Carrega cards de faturamento
       carregarPedidosAFaturar();
+      atualizarHistoricoEntradas(); // Salva entradas de hoje no histórico
       carregarEntradasDoDia();
       carregarFaturamentoDia();
 
       // 6. Atualiza cards de faturamento a cada 5 minutos
       setInterval(function() {
         carregarPedidosAFaturar();
+        atualizarHistoricoEntradas(); // Salva entradas de hoje no histórico
         carregarEntradasDoDia();
         carregarFaturamentoDia();
       }, 5 * 60 * 1000);
@@ -2190,7 +2266,19 @@
         .getPedidosAFaturar();
     }
 
-    // Carrega dados de Entradas do Dia
+    // Atualiza histórico de entradas silenciosamente (salva dados de hoje no histórico)
+    function atualizarHistoricoEntradas() {
+      google.script.run
+        .withSuccessHandler(function() {
+          addDebugLog("📦 Histórico de entradas atualizado silenciosamente", "success");
+        })
+        .withFailureHandler(function() {
+          // Falha silenciosa - não bloqueia o usuário
+        })
+        .getEntradasDoDia();
+    }
+
+    // Carrega dados de Entradas do Dia (lê do histórico, como faturamento)
     function carregarEntradasDoDia() {
       addDebugLog("📦 Carregando Entradas do Dia...");
       document.getElementById('listaEntradas').innerHTML = '<div class="loading-faturamento">Carregando...</div>';
@@ -2205,16 +2293,22 @@
             return;
           }
 
-          document.getElementById('timestampEntradas').textContent = resultado.timestamp;
+          // Atualiza o timestamp
+          if (resultado.timestamp) {
+            document.getElementById('timestampEntradas').textContent = resultado.timestamp;
+          } else {
+            document.getElementById('timestampEntradas').textContent = 'Aguardando primeiro registro';
+          }
 
           if (!resultado.dados || resultado.dados.length === 0) {
+            var mensagem = resultado.mensagem || 'Nenhuma entrada registrada';
             document.getElementById('listaEntradas').innerHTML =
-              '<div class="empty-state-faturamento"><div class="empty-state-icon-faturamento">📭</div>Nenhuma entrada hoje</div>';
+              '<div class="empty-state-faturamento"><div class="empty-state-icon-faturamento">📭</div>' + mensagem + '</div>';
             return;
           }
 
           var html = '<table class="table-faturamento">';
-          html += '<thead><tr><th>Cliente</th><th>Marca</th><th>Ordem Compra</th><th>Valor</th><th>Data Receb.</th></tr></thead>';
+          html += '<thead><tr><th>Cliente</th><th>Marca</th><th>Valor Entrada</th></tr></thead>';
           html += '<tbody>';
 
           var totalGeral = 0;
@@ -2223,17 +2317,14 @@
             html += '<tr>';
             html += '<td><b>' + item.cliente + '</b></td>';
             html += '<td><span class="marca-badge-faturamento">' + item.marca + '</span></td>';
-            html += '<td>' + item.ordemCompra + '</td>';
             html += '<td class="valor-faturamento">R$ ' + item.valor.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>';
-            html += '<td>' + item.dataRecebimento + '</td>';
             html += '</tr>';
             totalGeral += item.valor;
           });
 
           html += '<tr class="total-row-faturamento">';
-          html += '<td colspan="3"><strong>TOTAL</strong></td>';
-          html += '<td class="valor-faturamento"><strong>R$ ' + totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</strong></td>';
-          html += '<td></td>';
+          html += '<td colspan="2"><strong>TOTAL ENTRADAS</strong></td>';
+          html += '<td class="valor-faturamento">R$ ' + totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>';
           html += '</tr>';
 
           html += '</tbody></table>';
@@ -2245,7 +2336,7 @@
           document.getElementById('listaEntradas').innerHTML =
             '<div class="empty-state-faturamento"><div class="empty-state-icon-faturamento">❌</div>Erro: ' + error.message + '</div>';
         })
-        .getEntradasDoDia();
+        .getUltimaEntrada();
     }
 
     // Carrega dados do Faturamento do Dia
@@ -2340,11 +2431,19 @@
       document.getElementById('modalHistorico').style.display = 'none';
     }
 
-    // Fecha o modal ao clicar fora dele
+    // Fecha os modais ao clicar fora deles
     window.onclick = function(event) {
-      var modal = document.getElementById('modalHistorico');
-      if (event.target == modal) {
+      var modalFaturamento = document.getElementById('modalHistorico');
+      if (event.target == modalFaturamento) {
         fecharHistoricoFaturamento();
+      }
+      var modalEntradas = document.getElementById('modalHistoricoEntradas');
+      if (event.target == modalEntradas) {
+        fecharHistoricoEntradas();
+      }
+      var modalEditarEntrada = document.getElementById('modalEditarEntrada');
+      if (event.target == modalEditarEntrada) {
+        fecharModalEdicaoEntrada();
       }
     }
 
@@ -2622,7 +2721,306 @@
     }
 
     // ========================================
-    // FIM DAS FUNÇÕES DE HISTÓRICO
+    // FIM DAS FUNÇÕES DE HISTÓRICO FATURAMENTO
+    // ========================================
+
+    // ========================================
+    // FUNÇÕES DO HISTÓRICO DE ENTRADAS
+    // (Espelho do sistema de Faturamento)
+    // ========================================
+
+    // Abre o modal de histórico de entradas
+    function abrirHistoricoEntradas() {
+      addDebugLog("📦 Abrindo modal de histórico de entradas...");
+      document.getElementById('modalHistoricoEntradas').style.display = 'block';
+
+      // Define mês atual por padrão
+      var hoje = new Date();
+      var mesAtual = String(hoje.getMonth() + 1).padStart(2, '0');
+      var anoAtual = hoje.getFullYear();
+      document.getElementById('mesAnoEntradas').value = anoAtual + '-' + mesAtual;
+
+      // Define filtro como "mes" por padrão
+      document.getElementById('filtroMesEntradas').value = 'mes';
+      document.getElementById('selecionarMesEntradas').style.display = 'flex';
+
+      carregarHistoricoEntradas();
+    }
+
+    // Fecha o modal de histórico de entradas
+    function fecharHistoricoEntradas() {
+      document.getElementById('modalHistoricoEntradas').style.display = 'none';
+    }
+
+    // Variável global para armazenar todos os dados do histórico de entradas
+    var todosOsDadosHistoricoEntradas = [];
+
+    // Carrega o histórico de entradas da planilha
+    function carregarHistoricoEntradas() {
+      addDebugLog("📥 Carregando histórico de entradas...");
+      document.getElementById('conteudoHistoricoEntradas').innerHTML = '<div class="loading-faturamento">Carregando histórico...</div>';
+
+      google.script.run
+        .withSuccessHandler(function(resultado) {
+          addDebugLog("✅ Histórico de entradas recebido: " + (resultado.dados ? resultado.dados.length : 0) + " registros", "success");
+
+          if (!resultado.sucesso || !resultado.dados || resultado.dados.length === 0) {
+            var mensagem = resultado.mensagem || 'Nenhum histórico de entradas disponível ainda.';
+            document.getElementById('conteudoHistoricoEntradas').innerHTML =
+              '<div class="empty-historico">📭 ' + mensagem + '</div>';
+            document.getElementById('totalDinamicoEntradas').textContent = 'R$ 0,00';
+            return;
+          }
+
+          // Armazena todos os dados
+          todosOsDadosHistoricoEntradas = resultado.dados;
+
+          // Aplica filtro inicial (mês atual por padrão)
+          aplicarFiltroMesEntradas();
+        })
+        .withFailureHandler(function(error) {
+          addDebugLog("❌ Erro ao carregar histórico de entradas: " + error.message, "error");
+          document.getElementById('conteudoHistoricoEntradas').innerHTML =
+            '<div class="empty-historico">❌ Erro ao carregar histórico: ' + error.message + '</div>';
+          document.getElementById('totalDinamicoEntradas').textContent = 'R$ 0,00';
+        })
+        .getHistoricoEntradas();
+    }
+
+    // Aplica o filtro de mês para entradas
+    function aplicarFiltroMesEntradas() {
+      var filtro = document.getElementById('filtroMesEntradas').value;
+      var dadosFiltrados = [];
+
+      if (filtro === 'tudo') {
+        dadosFiltrados = todosOsDadosHistoricoEntradas;
+        document.getElementById('selecionarMesEntradas').style.display = 'none';
+      } else if (filtro === 'mes') {
+        document.getElementById('selecionarMesEntradas').style.display = 'flex';
+
+        var mesAno = document.getElementById('mesAnoEntradas').value;
+        if (!mesAno) {
+          var hoje = new Date();
+          var mesAtual = String(hoje.getMonth() + 1).padStart(2, '0');
+          var anoAtual = hoje.getFullYear();
+          mesAno = anoAtual + '-' + mesAtual;
+          document.getElementById('mesAnoEntradas').value = mesAno;
+        }
+
+        var partesMesAno = mesAno.split('-');
+        var anoFiltro = parseInt(partesMesAno[0]);
+        var mesFiltro = parseInt(partesMesAno[1]);
+
+        dadosFiltrados = todosOsDadosHistoricoEntradas.filter(function(item) {
+          var partesData = item.data.split('/');
+          var mesItem = parseInt(partesData[1]);
+          var anoItem = parseInt(partesData[2]);
+
+          return anoItem === anoFiltro && mesItem === mesFiltro;
+        });
+      }
+
+      renderizarHistoricoEntradas(dadosFiltrados);
+    }
+
+    // Renderiza o histórico de entradas com os dados fornecidos
+    function renderizarHistoricoEntradas(dados) {
+      if (dados.length === 0) {
+        document.getElementById('conteudoHistoricoEntradas').innerHTML =
+          '<div class="empty-historico">📭 Nenhum registro encontrado para este período.</div>';
+        document.getElementById('totalDinamicoEntradas').textContent = 'R$ 0,00';
+        return;
+      }
+
+      // Agrupa por data
+      var dadosPorData = {};
+      dados.forEach(function(item) {
+        if (!dadosPorData[item.data]) {
+          dadosPorData[item.data] = [];
+        }
+        dadosPorData[item.data].push(item);
+      });
+
+      // Renderiza tabela
+      var html = '<table class="historico-tabela">';
+      html += '<thead><tr>';
+      html += '<th>Data</th>';
+      html += '<th>Cliente</th>';
+      html += '<th>Marca</th>';
+      html += '<th>Valor Entrada</th>';
+      html += '<th>Observação</th>';
+      html += '<th style="text-align:center;">Ações</th>';
+      html += '</tr></thead>';
+      html += '<tbody>';
+
+      // Ordena datas (mais recentes primeiro)
+      var datas = Object.keys(dadosPorData).sort(function(a, b) {
+        var partesA = a.split('/');
+        var partesB = b.split('/');
+        var dataA = new Date(partesA[2], partesA[1] - 1, partesA[0]);
+        var dataB = new Date(partesB[2], partesB[1] - 1, partesB[0]);
+        return dataB - dataA;
+      });
+
+      var totalGeral = 0;
+
+      datas.forEach(function(data) {
+        var itensDia = dadosPorData[data];
+        var totalDia = 0;
+
+        // Cabeçalho do dia
+        html += '<tr class="data-grupo">';
+        html += '<td colspan="6">📅 ' + data + '</td>';
+        html += '</tr>';
+
+        // Itens do dia
+        itensDia.forEach(function(item) {
+          var dataEscapada = item.data.replace(/'/g, "\\'");
+          var clienteEscapado = item.cliente.replace(/'/g, "\\'");
+          var marcaEscapada = item.marca.replace(/'/g, "\\'");
+          var observacaoTexto = item.observacao || "";
+
+          html += '<tr>';
+          html += '<td></td>';
+          html += '<td><b>' + item.cliente + '</b></td>';
+          html += '<td><span class="marca-badge-faturamento">' + item.marca + '</span></td>';
+          html += '<td class="valor-faturamento">R$ ' + item.valor.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>';
+          html += '<td class="observacao-cell">' + observacaoTexto + '</td>';
+          html += '<td style="text-align:center;">';
+          html += '<button class="btn-editar-historico" onclick="abrirModalEdicaoEntrada(\'' + dataEscapada + '\', \'' + clienteEscapado + '\', \'' + marcaEscapada + '\', ' + item.valor + ', \'' + observacaoTexto.replace(/'/g, "\\'") + '\')">✏️ Editar</button>';
+          html += '<button class="btn-deletar-historico" onclick="deletarRegistroEntrada(\'' + dataEscapada + '\', \'' + clienteEscapado + '\', \'' + marcaEscapada + '\')">🗑️ Deletar</button>';
+          html += '</td>';
+          html += '</tr>';
+          totalDia += item.valor;
+        });
+
+        // Total do dia
+        html += '<tr class="total-dia">';
+        html += '<td colspan="5"><strong>Total do dia ' + data + '</strong></td>';
+        html += '<td class="valor-faturamento">R$ ' + totalDia.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</td>';
+        html += '</tr>';
+
+        totalGeral += totalDia;
+      });
+
+      html += '</tbody></table>';
+
+      document.getElementById('conteudoHistoricoEntradas').innerHTML = html;
+
+      // Atualiza total dinâmico
+      document.getElementById('totalDinamicoEntradas').textContent =
+        'R$ ' + totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    // ========================================
+    // FUNÇÕES DE EDIÇÃO E DELEÇÃO DE ENTRADAS
+    // ========================================
+
+    // Abre o modal de edição de entrada
+    function abrirModalEdicaoEntrada(data, cliente, marca, valor, observacao) {
+      document.getElementById('editDataEntrada').value = data;
+      document.getElementById('editClienteEntrada').value = cliente;
+      document.getElementById('editMarcaEntrada').value = marca;
+      document.getElementById('editValorEntrada').value = valor.toFixed(2);
+      document.getElementById('editObservacaoEntrada').value = observacao || "";
+
+      document.getElementById('modalEditarEntrada').style.display = 'block';
+      addDebugLog("✏️ Abrindo edição de entrada: " + cliente + " - " + marca + " (" + data + ")");
+    }
+
+    // Fecha o modal de edição de entrada
+    function fecharModalEdicaoEntrada() {
+      document.getElementById('modalEditarEntrada').style.display = 'none';
+    }
+
+    // Salva a edição do registro de entrada
+    function salvarEdicaoEntrada() {
+      var data = document.getElementById('editDataEntrada').value;
+      var cliente = document.getElementById('editClienteEntrada').value;
+      var marca = document.getElementById('editMarcaEntrada').value;
+      var novoValor = parseFloat(document.getElementById('editValorEntrada').value);
+      var observacao = document.getElementById('editObservacaoEntrada').value.trim();
+
+      if (isNaN(novoValor) || novoValor < 0) {
+        alert("⚠️ Por favor, insira um valor válido!");
+        return;
+      }
+
+      if (!observacao) {
+        if (!confirm("Você não informou uma observação. Deseja continuar mesmo assim?")) {
+          return;
+        }
+      }
+
+      // Desabilita botão enquanto processa
+      var btnSalvar = document.querySelector('#modalEditarEntrada .btn-salvar-edicao');
+      btnSalvar.disabled = true;
+      btnSalvar.innerHTML = '⏳ Salvando...';
+
+      addDebugLog("💾 Salvando edição de entrada: " + data + " | " + cliente + " | " + marca + " → R$ " + novoValor.toFixed(2));
+
+      google.script.run
+        .withSuccessHandler(function(resultado) {
+          btnSalvar.disabled = false;
+          btnSalvar.innerHTML = '💾 Salvar Alterações';
+
+          if (resultado.sucesso) {
+            addDebugLog("✅ Registro de entrada editado com sucesso!", "success");
+            alert("✅ " + resultado.mensagem);
+            fecharModalEdicaoEntrada();
+            carregarHistoricoEntradas();
+            carregarEntradasDoDia();
+          } else {
+            addDebugLog("❌ Erro ao editar entrada: " + resultado.mensagem, "error");
+            alert("❌ " + resultado.mensagem);
+          }
+        })
+        .withFailureHandler(function(error) {
+          btnSalvar.disabled = false;
+          btnSalvar.innerHTML = '💾 Salvar Alterações';
+          addDebugLog("❌ Erro ao salvar edição de entrada: " + error.message, "error");
+          alert("❌ Erro ao salvar: " + error.message);
+        })
+        .editarRegistroEntrada(data, cliente, marca, novoValor, observacao);
+    }
+
+    // Deleta um registro de entrada
+    function deletarRegistroEntrada(data, cliente, marca) {
+      var confirmacao = confirm(
+        "⚠️ TEM CERTEZA que deseja DELETAR este registro de entrada?\n\n" +
+        "Data: " + data + "\n" +
+        "Cliente: " + cliente + "\n" +
+        "Marca: " + marca + "\n\n" +
+        "Esta ação NÃO pode ser desfeita!"
+      );
+
+      if (!confirmacao) {
+        return;
+      }
+
+      addDebugLog("🗑️ Deletando entrada: " + data + " | " + cliente + " | " + marca);
+
+      google.script.run
+        .withSuccessHandler(function(resultado) {
+          if (resultado.sucesso) {
+            addDebugLog("✅ Registro de entrada deletado com sucesso!", "success");
+            alert("✅ " + resultado.mensagem);
+            carregarHistoricoEntradas();
+            carregarEntradasDoDia();
+          } else {
+            addDebugLog("❌ Erro ao deletar entrada: " + resultado.mensagem, "error");
+            alert("❌ " + resultado.mensagem);
+          }
+        })
+        .withFailureHandler(function(error) {
+          addDebugLog("❌ Erro ao deletar entrada: " + error.message, "error");
+          alert("❌ Erro ao deletar: " + error.message);
+        })
+        .deletarRegistroEntrada(data, cliente, marca);
+    }
+
+    // ========================================
+    // FIM DAS FUNÇÕES DE HISTÓRICO ENTRADAS
     // ========================================
 
     // ========================================

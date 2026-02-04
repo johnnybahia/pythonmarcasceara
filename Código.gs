@@ -2230,6 +2230,164 @@ function deletarRegistroFaturamento(data, cliente, marca) {
 // ========================================
 
 /**
+ * FUNÇÃO DE MIGRAÇÃO - Executar UMA VEZ para popular o histórico
+ * Lê TODAS as entradas existentes na aba Dados1 (todas as datas)
+ * e salva no HistoricoEntradas agrupado por data + cliente + marca.
+ *
+ * Para executar: Abra o editor do Apps Script, selecione esta função
+ * e clique em "Executar" (▶️)
+ */
+function migrarEntradasParaHistorico() {
+  try {
+    Logger.log("🔄 Iniciando migração de entradas para o histórico...");
+
+    var dados = lerDados1();
+
+    if (dados.length === 0) {
+      Logger.log("⚠️ Nenhum dado em Dados1 para migrar");
+      return;
+    }
+
+    // Carrega mapa de marcas da aba Dados
+    var mapaOCDados = criarMapaOCDadosCompleto();
+
+    // Agrupa por data → cliente+marca → valor
+    var entradasPorData = {};
+
+    dados.forEach(function(item) {
+      if (item.dataRecebimento) {
+        var dataReceb;
+        if (item.dataRecebimento instanceof Date) {
+          dataReceb = new Date(item.dataRecebimento);
+        } else {
+          var partes = item.dataRecebimento.toString().split('/');
+          if (partes.length === 3) {
+            dataReceb = new Date(partes[2], partes[1] - 1, partes[0]);
+          }
+        }
+
+        if (dataReceb && !isNaN(dataReceb.getTime())) {
+          var dataFormatada = ("0" + dataReceb.getDate()).slice(-2) + "/" +
+                              ("0" + (dataReceb.getMonth() + 1)).slice(-2) + "/" +
+                              dataReceb.getFullYear();
+
+          // Busca marca
+          var dadosOC = mapaOCDados[item.ordemCompra];
+          var marca = dadosOC ? dadosOC.marca : "Sem Marca";
+
+          var chave = item.cliente + "|" + marca;
+
+          if (!entradasPorData[dataFormatada]) {
+            entradasPorData[dataFormatada] = {};
+          }
+
+          if (!entradasPorData[dataFormatada][chave]) {
+            entradasPorData[dataFormatada][chave] = {
+              cliente: item.cliente,
+              marca: marca,
+              valor: 0
+            };
+          }
+
+          entradasPorData[dataFormatada][chave].valor += item.valor;
+        }
+      }
+    });
+
+    var datas = Object.keys(entradasPorData);
+    Logger.log("📅 Encontradas " + datas.length + " datas com entradas para migrar");
+
+    if (datas.length === 0) {
+      Logger.log("⚠️ Nenhuma entrada com data válida para migrar");
+      return;
+    }
+
+    // Cria ou acessa a aba HistoricoEntradas
+    var doc = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = doc.getSheetByName("HistoricoEntradas");
+
+    if (!sheet) {
+      Logger.log("📋 Criando aba 'HistoricoEntradas'...");
+      sheet = doc.insertSheet("HistoricoEntradas");
+      sheet.appendRow(["Data", "Cliente", "Marca", "Valor Entrada", "Observação", "Timestamp"]);
+      var headerRange = sheet.getRange(1, 1, 1, 6);
+      headerRange.setBackground("#1565c0");
+      headerRange.setFontColor("#FFFFFF");
+      headerRange.setFontWeight("bold");
+      sheet.setFrozenRows(1);
+    }
+
+    // Lê registros existentes para não duplicar
+    var registrosExistentes = {};
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      var dadosExistentes = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+      dadosExistentes.forEach(function(row) {
+        var dataReg = row[0];
+        if (dataReg instanceof Date) {
+          var d = dataReg;
+          dataReg = ("0" + d.getDate()).slice(-2) + "/" +
+                    ("0" + (d.getMonth() + 1)).slice(-2) + "/" +
+                    d.getFullYear();
+        } else {
+          dataReg = dataReg.toString().trim();
+        }
+        var chave = dataReg + "|" + row[1].toString().toUpperCase() + "|" + row[2].toString().toUpperCase();
+        registrosExistentes[chave] = true;
+      });
+      Logger.log("📋 " + Object.keys(registrosExistentes).length + " registros já existem no histórico");
+    }
+
+    // Monta as linhas para inserir
+    var timestamp = obterTimestamp();
+    var novasLinhas = [];
+    var totalMigrado = 0;
+    var totalIgnorado = 0;
+
+    datas.forEach(function(data) {
+      var entradas = entradasPorData[data];
+      Object.keys(entradas).forEach(function(chave) {
+        var item = entradas[chave];
+        var chaveExistente = data + "|" + item.cliente.toUpperCase() + "|" + item.marca.toUpperCase();
+
+        if (registrosExistentes[chaveExistente]) {
+          totalIgnorado++;
+          return; // Já existe, pula
+        }
+
+        novasLinhas.push([
+          data,
+          item.cliente,
+          item.marca,
+          item.valor,
+          "", // Observação vazia (migração automática)
+          timestamp
+        ]);
+        totalMigrado++;
+      });
+    });
+
+    // Insere tudo de uma vez
+    if (novasLinhas.length > 0) {
+      var ultimaLinha = sheet.getLastRow();
+      sheet.getRange(ultimaLinha + 1, 1, novasLinhas.length, 6).setValues(novasLinhas);
+
+      // Formata valores como moeda
+      var valorRange = sheet.getRange(ultimaLinha + 1, 4, novasLinhas.length, 1);
+      valorRange.setNumberFormat("R$ #,##0.00");
+    }
+
+    Logger.log("✅ Migração concluída!");
+    Logger.log("📊 " + totalMigrado + " registros migrados");
+    Logger.log("⏭️ " + totalIgnorado + " registros já existiam (ignorados)");
+    Logger.log("📅 " + datas.length + " datas processadas");
+
+  } catch (erro) {
+    Logger.log("❌ Erro na migração: " + erro.toString());
+  }
+}
+
+/**
  * Salva as entradas do dia no histórico da planilha
  * @param {Array} dados - Array com os dados das entradas
  * @param {string} data - Data no formato DD/MM/AAAA

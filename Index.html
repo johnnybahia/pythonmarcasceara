@@ -483,6 +483,36 @@
       background-color: #1f618d;
     }
 
+    .btn-refresh {
+      background-color: transparent;
+      border: 1px solid #ccc;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-refresh:hover {
+      background-color: #f0f0f0;
+      border-color: #999;
+      transform: rotate(180deg);
+    }
+    .btn-refresh:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-refresh.spinning {
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
     /* MODAL DE HISTÓRICO */
     .modal-historico {
       display: none;
@@ -1196,7 +1226,10 @@
         <div class="card-faturamento">
           <div class="card-header-faturamento">
             <h3>📦 Entradas do Dia</h3>
-            <span class="timestamp-faturamento" id="timestampEntradas">Carregando...</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="timestamp-faturamento" id="timestampEntradas">Carregando...</span>
+              <button class="btn-refresh" onclick="forcarAtualizacaoEntradas()" title="Atualizar agora">🔄</button>
+            </div>
           </div>
           <div class="card-body-faturamento" id="listaEntradas">
             <div class="loading-faturamento">Carregando dados...</div>
@@ -1210,7 +1243,10 @@
         <div class="card-faturamento">
           <div class="card-header-faturamento">
             <h3>💰 Faturamento do Dia</h3>
-            <span class="timestamp-faturamento" id="timestampFaturamento">Carregando...</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="timestamp-faturamento" id="timestampFaturamento">Carregando...</span>
+              <button class="btn-refresh" onclick="forcarAtualizacaoFaturamento()" title="Atualizar agora">🔄</button>
+            </div>
           </div>
           <div class="card-body-faturamento" id="listaFaturamento">
             <div class="loading-faturamento">Carregando dados...</div>
@@ -1671,13 +1707,14 @@
       carregarEntradasDoDia();
       carregarFaturamentoDia();
 
-      // 6. Atualiza cards de faturamento a cada 5 minutos
+      // 6. Atualiza cards a cada 1 minuto
       setInterval(function() {
+        addDebugLog("⏰ Atualização automática...");
         carregarPedidosAFaturar();
         atualizarHistoricoEntradas(); // Salva entradas de hoje no histórico
         carregarEntradasDoDia();
         carregarFaturamentoDia();
-      }, 5 * 60 * 1000);
+      }, 60 * 1000); // 1 minuto
     }
 
     // Função de Funil: Filtra Marcas baseado no Cliente
@@ -2276,6 +2313,53 @@
           // Falha silenciosa - não bloqueia o usuário
         })
         .getEntradasDoDia();
+    }
+
+    // Força atualização manual das entradas (botão refresh)
+    function forcarAtualizacaoEntradas() {
+      var btn = document.querySelector('#timestampEntradas').parentElement.querySelector('.btn-refresh');
+      btn.classList.add('spinning');
+      btn.disabled = true;
+
+      addDebugLog("🔄 Forçando atualização de entradas...");
+
+      // Primeiro atualiza o histórico, depois recarrega o card
+      google.script.run
+        .withSuccessHandler(function() {
+          carregarEntradasDoDia();
+          setTimeout(function() {
+            btn.classList.remove('spinning');
+            btn.disabled = false;
+          }, 500);
+        })
+        .withFailureHandler(function() {
+          btn.classList.remove('spinning');
+          btn.disabled = false;
+        })
+        .getEntradasDoDia();
+    }
+
+    // Força atualização manual do faturamento (botão refresh)
+    function forcarAtualizacaoFaturamento() {
+      var btn = document.querySelector('#timestampFaturamento').parentElement.querySelector('.btn-refresh');
+      btn.classList.add('spinning');
+      btn.disabled = true;
+
+      addDebugLog("🔄 Forçando atualização de faturamento...");
+
+      google.script.run
+        .withSuccessHandler(function() {
+          carregarFaturamentoDia();
+          setTimeout(function() {
+            btn.classList.remove('spinning');
+            btn.disabled = false;
+          }, 500);
+        })
+        .withFailureHandler(function() {
+          btn.classList.remove('spinning');
+          btn.disabled = false;
+        })
+        .getFaturamentoDia();
     }
 
     // Carrega dados de Entradas do Dia (lê do histórico, como faturamento)

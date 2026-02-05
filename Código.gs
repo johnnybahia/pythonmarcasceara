@@ -1897,6 +1897,92 @@ function setupTriggers2xDia() {
 }
 
 // ========================================
+// TRIGGERS AUTOMÁTICOS PARA ENTRADAS
+// ========================================
+
+/**
+ * Executa verificação de entradas e salva no histórico
+ * USE ESTA FUNÇÃO PARA EXECUTAR MANUALMENTE OU VIA TRIGGER
+ */
+function executarVerificacaoEntradas() {
+  Logger.log("🔄 Executando verificação de entradas...");
+
+  var resultado = getEntradasDoDia();
+
+  if (resultado.sucesso) {
+    Logger.log("✅ Verificação de entradas concluída com sucesso!");
+    Logger.log("📦 Entradas encontradas: " + resultado.dados.length);
+
+    if (resultado.dados.length > 0) {
+      Logger.log("📋 Detalhes das entradas:");
+      resultado.dados.forEach(function(item) {
+        Logger.log("   - " + item.cliente + " (" + item.marca + "): R$ " + item.valor.toFixed(2));
+      });
+    } else {
+      Logger.log("ℹ️ Nenhuma entrada detectada para hoje");
+    }
+  } else {
+    Logger.log("❌ Erro na verificação de entradas: " + resultado.erro);
+  }
+
+  return resultado;
+}
+
+/**
+ * Configura triggers automáticos para ENTRADAS (a cada 30 minutos)
+ * EXECUTE ESTA FUNÇÃO UMA VEZ PARA CONFIGURAR
+ */
+function setupTriggersEntradas() {
+  // Remove triggers antigos para evitar duplicação
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'executarVerificacaoEntradas') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  // Cria trigger para executar A CADA 30 MINUTOS
+  ScriptApp.newTrigger('executarVerificacaoEntradas')
+    .timeBased()
+    .everyMinutes(30)
+    .create();
+
+  Logger.log("✅ Triggers de entradas configurados com sucesso!");
+  Logger.log("⏰ Verificações automáticas A CADA 30 MINUTOS");
+}
+
+/**
+ * Configura TODOS os triggers (Faturamento + Entradas)
+ * EXECUTE ESTA FUNÇÃO UMA VEZ PARA CONFIGURAR TUDO
+ */
+function setupTodosOsTriggers() {
+  // Remove TODOS os triggers antigos
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function(trigger) {
+    var funcao = trigger.getHandlerFunction();
+    if (funcao === 'executarVerificacaoFaturamento' || funcao === 'executarVerificacaoEntradas') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  // Trigger de Faturamento - a cada 1 hora
+  ScriptApp.newTrigger('executarVerificacaoFaturamento')
+    .timeBased()
+    .everyHours(1)
+    .create();
+
+  // Trigger de Entradas - a cada 30 minutos
+  ScriptApp.newTrigger('executarVerificacaoEntradas')
+    .timeBased()
+    .everyMinutes(30)
+    .create();
+
+  Logger.log("✅ TODOS os triggers configurados com sucesso!");
+  Logger.log("⏰ Faturamento: a cada 1 hora");
+  Logger.log("⏰ Entradas: a cada 30 minutos");
+}
+
+// ========================================
 // FUNÇÕES DE TESTE E DEBUG
 // ========================================
 
